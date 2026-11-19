@@ -1,0 +1,28 @@
+#!/bin/sh
+export MOZ_USE_XINPUT2=1
+# Theme Qt5/Qt6 apps with qt5ct/qt6ct, matching the XFCE session.
+# ~/.config/environment.d/50-qt.conf only reaches systemd user units, not
+# this X11 session's process tree, so export it here as well.
+export QT_QPA_PLATFORMTHEME="${QT_QPA_PLATFORMTHEME:-qt5ct}"
+xinput set-prop "UNIW0001:00 093A:1336 Touchpad" "libinput Natural Scrolling Enabled" 1
+xinput set-prop "UNIW0001:00 093A:1336 Touchpad" "libinput Tapping Enabled" 1
+xset r rate 300 50
+feh --bg-fill ~/Pictures/wallpaper/gruv-orange-moss.jpg &
+# Import DISPLAY/XAUTHORITY into the systemd user manager and start the
+# desktop portals. Without this, xdg-desktop-portal-gtk fails with
+# "cannot open display:" and every GTK app stalls ~25s per portal interface.
+export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+"$HOME/.local/bin/xdg-portal-env" >/dev/null 2>&1 &
+# Low-latency compositor: vsync'd frame pacing (no effects), while
+# unredir-if-possible lets fullscreen apps bypass it. Without this, dwm
+# presents directly and scrolling/resizing can judder or tear.
+if ! pgrep -x picom >/dev/null 2>&1; then
+	picom --config "$HOME/.config/picom/picom.conf" --log-level=warn \
+		>/dev/null 2>&1 &
+fi
+# setxkbmap -option caps:escape_shifted_capslock
+# Bar status: wifi, brightness, volume, battery, clock. The systray is drawn
+# to the left of this text (systrayonleft in ~/dwm/config.h).
+"$HOME/.local/bin/dwm-status" &
+
+exec dwm
