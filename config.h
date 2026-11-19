@@ -77,6 +77,7 @@ static void tagview(const Arg *arg) { tag(arg); view(arg); }
 
 static const Key keys[] = {
 	/* modifier                     key        function        argument */
+  { MODKEY|ControlMask|ShiftMask, XK_q,      quit,           {1} },
 	{ MODKEY,                       XK_b,      spawn,          {.v = brwsrcmd} },
 	{ MODKEY,                       XK_e,      spawn,          {.v = filecmd} },
 	{ MODKEY,                       XK_p,      spawn,          {.v = dmenucmd } },
