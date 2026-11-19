@@ -78,7 +78,7 @@ enum { NetSupported, NetWMName, NetWMState, NetWMCheck,
        NetWMWindowTypeDialog, NetClientList, NetLast }; /* EWMH atoms */
 enum { Manager, Xembed, XembedInfo, XLast }; /* Xembed atoms */
 enum { WMProtocols, WMDelete, WMState, WMTakeFocus, WMLast }; /* default atoms */
-enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkWinTitle,
+enum { ClkTagBar, ClkLtSymbol, ClkStatusText, ClkStatusTextWifi, ClkStatusBrightness, ClkStatusVolume, ClkWinTitle,
        ClkClientWin, ClkRootWin, ClkLast }; /* clicks */
 
 typedef union {
@@ -272,6 +272,7 @@ static void zoom(const Arg *arg);
 static Systray *systray = NULL;
 static const char broken[] = "broken";
 static char stext[256];
+static int statusw;              /* pixel width of the status text */
 static int screen;
 static int sw, sh;           /* X display screen geometry width, height */
 static int bh;               /* bar height */
@@ -487,9 +488,36 @@ buttonpress(XEvent *e)
 			arg.ui = 1 << i;
 		} else if (ev->x < x + TEXTW(selmon->ltsymbol))
 			click = ClkLtSymbol;
-		else if (ev->x > selmon->ww - (int)TEXTW(stext) + lrpad - 2 - getsystraywidth())
+		else if (ev->x > selmon->ww - statusw - (systrayonleft ? 0 : (int)getsystraywidth())) {
+			char *text, *s, ch;
+			int off = 0, blockw, idx = 0, spacew;
+			int sx = selmon->ww - statusw - (systrayonleft ? 0 : (int)getsystraywidth());
+
+			spacew = drw_fontset_getwidth(drw, " ");
 			click = ClkStatusText;
-		else
+			for (text = s = stext; ; s++) {
+				if (*s && (unsigned char)(*s) >= ' ')
+					continue;
+				ch = *s;
+				*s = '\0';
+				blockw = TEXTW(text) - lrpad;
+				*s = ch;
+				if (ev->x < sx + off + blockw) {
+					switch (idx) {
+					case 0: click = ClkStatusTextWifi; break;
+					case 1: click = ClkStatusBrightness; break;
+					case 2: click = ClkStatusVolume; break;
+					default: click = ClkStatusText; break;
+					}
+					break;
+				}
+				if (!ch)
+					break;
+				off += blockw + spacew;
+				text = s + 1;
+				idx++;
+			}
+		} else
 			click = ClkWinTitle;
 	} else if ((c = wintoclient(ev->window))) {
 		focus(c);
@@ -836,9 +864,25 @@ drawbar(Monitor *m)
 
 	/* draw status first so it can be overdrawn by tags later */
 	if (m == selmon) { /* status is only drawn on selected monitor */
+		char *text, *s, ch;
+		int off = 0, blockw, spacew = drw_fontset_getwidth(drw, " ");
+
 		drw_setscheme(drw, scheme[SchemeNorm]);
-		tw = TEXTW(stext) - lrpad / 2 + 2; /* 2px extra right padding */
-		drw_text(drw, m->ww - tw - stw, 0, tw, bh, lrpad / 2 - 2, stext, 0);
+		tw = statusw;
+		for (text = s = stext; ; s++) {
+			if (*s && (unsigned char)(*s) >= ' ')
+				continue;
+			ch = *s;
+			*s = '\0';
+			blockw = TEXTW(text);
+			drw_text(drw, m->ww - tw - stw + off, 0, blockw, bh, lrpad / 2 - 2, text, 0);
+			*s = ch;
+			off += blockw - lrpad;
+			if (!ch)
+				break;
+			off += spacew;
+			text = s + 1;
+		}
 	}
 
 	resizebarwin(m);
@@ -864,7 +908,7 @@ drawbar(Monitor *m)
 
 	if ((w = m->ww - tw - stw - x) > bh) {
 		if (m->sel) {
-			drw_setscheme(drw, scheme[m == selmon ? SchemeSel : SchemeNorm]);
+			drw_setscheme(drw, scheme[SchemeNorm]);
 			drw_text(drw, x, 0, w, bh, lrpad / 2, m->sel->name, 0);
 			if (m->sel->isfloating)
 				drw_rect(drw, x + boxs, boxs, boxw, boxw, m->sel->isfixed, 0);
@@ -2300,8 +2344,28 @@ updatesizehints(Client *c)
 void
 updatestatus(void)
 {
-	if (!gettextprop(root, XA_WM_NAME, stext, sizeof(stext)))
+	if (!gettextprop(root, XA_WM_NAME, stext, sizeof(stext))) {
 		strcpy(stext, "dwm-"VERSION);
+		statusw = TEXTW(stext) - lrpad / 2 + 2;
+	} else {
+		char *text, *s, ch;
+		int spacew = drw_fontset_getwidth(drw, " ");
+
+		statusw = 0;
+		for (text = s = stext; ; s++) {
+			if (*s && (unsigned char)(*s) >= ' ')
+				continue;
+			ch = *s;
+			*s = '\0';
+			statusw += TEXTW(text) - lrpad;
+			*s = ch;
+			if (!ch)
+				break;
+			statusw += spacew;
+			text = s + 1;
+		}
+		statusw += lrpad / 2 + 2;
+	}
 	drawbar(selmon);
 	updatesystray();
 }
@@ -2366,7 +2430,7 @@ updatesystray(void)
 	Client *i;
 	Monitor *m = systraytomon(NULL);
 	unsigned int x = m->mx + m->mw;
-	unsigned int sw = TEXTW(stext) - lrpad + systrayspacing;
+	unsigned int sw = (statusw > lrpad / 2 + 2 ? statusw - lrpad / 2 - 2 : 0) + systrayspacing;
 	unsigned int w = 1;
 
 	if (!showsystray)
